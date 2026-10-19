@@ -39,6 +39,7 @@ from ..core import tree as HT
 from ..core.spec import BenchPrompts, BenchSpec, resolve_channel_model
 from ..install import codex_config_error
 from ..substrate.base import Install, RunRequest
+from ..substrate.claude import _HOST_ENV_PREFIXES as _CLAUDE_HOST_ENV
 from ..substrate.claude import ClaudeSubstrate
 from ..substrate.codex import CodexSubstrate
 from ..substrate.opencode import OUTPUT_TOKEN_MAX, OpencodeSubstrate
@@ -1039,7 +1040,7 @@ class JobBenchAdapter:
                 f"python-docx): {r.stderr.strip()[-300:]} -- {remedy}. Without them the judge "
                 f"grades '[ERROR: ... not available]' text as a real zero."
             )
-        if not config.JB_JUDGE_API_BASE:
+        if not config.JB_JUDGE_API_BASE and config.JB_JUDGE_BACKEND != "claude_cli":
             print(
                 "  [jb] WARNING: HARNESS2_JUDGE_BASE_URL is empty; rollouts will run "
                 "but judging refuses until it is set (see .env.example)",
@@ -1108,6 +1109,38 @@ class JobBenchAdapter:
             "no_output": True,
         }
 
+    @staticmethod
+    def _judge_token() -> str:
+        """HARNESS2_JUDGE_API_KEY, else a Vertex access token from gcloud; "" when neither."""
+        if config.JB_JUDGE_API_KEY:
+            return config.JB_JUDGE_API_KEY
+        try:
+            return subprocess.run(
+                ["gcloud", "auth", "application-default", "print-access-token"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            ).stdout.strip()
+        except (subprocess.SubprocessError, OSError):
+            return ""
+
+    @staticmethod
+    def _claude_judge_env(base_env: dict[str, str]) -> dict[str, str]:
+        """The claude_cli judge env: only HARNESS2_CLAUDE_AUTH's credential, a fresh config per call."""
+        env = {k: v for k, v in base_env.items() if not k.startswith(_CLAUDE_HOST_ENV)}
+        env.update(config.claude_auth_env())
+        env.update(
+            {
+                "JUDGE_BACKEND": "claude_cli",
+                "JUDGE_CLAUDE_BIN": str(config.CLAUDE_BIN),
+                "JUDGE_CLAUDE_CONFIG_ISOLATED": "1",
+                "DISABLE_UPDATES": "1",
+                "DISABLE_TELEMETRY": "1",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            }
+        )
+        return env
+
     def _run_judge(self, task_id: str, label: str, run_dir: Path) -> bool:
         """Invoke the upstream judge CLI in a subprocess; False on any failure."""
         judge_py = config.jb_repo() / "eval" / "judge.py"
@@ -1126,24 +1159,16 @@ class JobBenchAdapter:
             )
             return False
         api_base = config.JB_JUDGE_API_BASE
-        try:
-            token = (
-                config.JB_JUDGE_API_KEY
-                or subprocess.run(
-                    ["gcloud", "auth", "application-default", "print-access-token"],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                ).stdout.strip()
-            )
-        except (subprocess.SubprocessError, OSError):
-            token = ""
-        if not token:
-            print(
-                "  [jb] no Vertex access token (gcloud auth print-access-token); judge not run",
-                flush=True,
-            )
-            return False
+        if config.JB_JUDGE_BACKEND == "claude_cli":
+            api_base, token = "claude-cli", ""
+        else:
+            token = self._judge_token()
+            if not token:
+                print(
+                    "  [jb] no Vertex access token (gcloud auth print-access-token); judge not run",
+                    flush=True,
+                )
+                return False
         _reporting, own = self._details_candidates(task_id, label)
         own.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
@@ -1160,7 +1185,7 @@ class JobBenchAdapter:
             "--api-base",
             api_base,
             "--max-workers",
-            "8",
+            str(config.JB_JUDGE_WORKERS),
             "--max-retries",
             "3",
             "--timeout-per-rubric",
@@ -1174,6 +1199,8 @@ class JobBenchAdapter:
             "JUDGE_REASONING_EFFORT": config.JB_JUDGE_REASONING_EFFORT,
             "VERTEXAI_LOCATION": config.VERTEX_REGION,
         }
+        if config.JB_JUDGE_BACKEND == "claude_cli":
+            env = self._claude_judge_env(env)
         try:
             r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=1800)
         except (subprocess.SubprocessError, OSError) as exc:

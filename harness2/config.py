@@ -151,6 +151,11 @@ VERTEX_OPENAI_URL = (
 )
 JB_JUDGE_API_BASE = env("HARNESS2_JUDGE_BASE_URL", VERTEX_OPENAI_URL if VERTEX_PROJECT else "")
 JB_JUDGE_API_KEY = env("HARNESS2_JUDGE_API_KEY", "")
+# claude_cli grades each rubric in its own tool-less Claude Code session (auth from
+# HARNESS2_CLAUDE_AUTH) instead of calling an OpenAI-compatible endpoint.
+JB_JUDGE_BACKENDS = ("openai", "claude_cli")
+JB_JUDGE_BACKEND = env("HARNESS2_JUDGE_BACKEND", "openai")
+JB_JUDGE_WORKERS = env_int("HARNESS2_JUDGE_WORKERS", 2 if JB_JUDGE_BACKEND == "claude_cli" else 8)
 JB_JUDGE_REASONING_EFFORT = "low"
 JB_REPORTING_JUDGE_DETAILS = ""
 JB_OBS_TRUNC = 50000

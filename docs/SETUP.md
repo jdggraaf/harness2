@@ -166,8 +166,18 @@ With `HARNESS2_CLAUDE_AUTH=api_key`, set `ANTHROPIC_API_KEY`. With
 `claude setup-token`, which uses a Claude subscription; usage then counts against
 that subscription's limits. Only the credential the mode names is passed to a run.
 With `--substrate cc` and `HARNESS2_PROPOSER_CHANNEL=claude_cli`, no OpenCode model
-is used, so `HARNESS2_SOLVER_MODEL` is not required. Judging still uses the
-configured judge endpoint.
+is used, so `HARNESS2_SOLVER_MODEL` is not required. Add
+`HARNESS2_JUDGE_BACKEND=claude_cli` and a JobBench run needs only Claude
+credentials, for example a subscription token:
+
+```bash
+HARNESS2_CLAUDE_AUTH=oauth
+CLAUDE_CODE_OAUTH_TOKEN=<from claude setup-token>
+HARNESS2_CLAUDE_MODEL=<Claude model ID>
+HARNESS2_PROPOSER_CHANNEL=claude_cli
+HARNESS2_JUDGE_BACKEND=claude_cli
+HARNESS2_JUDGE_MODEL=<Claude model ID>
+```
 
 Claude Code runs with permission checks bypassed, which it refuses as root: run
 it as a regular user. It is proprietary software installed from npm under

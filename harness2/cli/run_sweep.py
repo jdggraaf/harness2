@@ -231,6 +231,8 @@ def _check_identity(adapter, args, namespace_dir: Path) -> None:
     # Only non-default routes are recorded, so existing run directories keep their identity.
     if config.DEFAULT_PROPOSER_CHANNEL != "opencode":
         identity["improver_channel"] = config.DEFAULT_PROPOSER_CHANNEL
+    if config.JB_JUDGE_BACKEND != "openai":
+        identity["judge_backend"] = config.JB_JUDGE_BACKEND
     namespace_dir.mkdir(parents=True, exist_ok=True)
     path = namespace_dir / "config.json"
     if path.is_file():

@@ -186,6 +186,40 @@ class SubstrateTests(unittest.TestCase):
             )
         self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", os.environ)
 
+    def test_claude_cli_judge_needs_no_endpoint_or_gcloud(self):
+        jb = self.root / "jbe"
+        (jb / "eval").mkdir(parents=True)
+        (jb / "eval/judge.py").write_text("", encoding="utf-8")
+        (jb / "dataset/main/p/task1").mkdir(parents=True)
+        (jb / "dataset/main/p/task1/RUBRICS.json").write_text("{}", encoding="utf-8")
+        python = self.root / "python"
+        python.write_text("", encoding="utf-8")
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append((cmd, kw.get("env") or {}))
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        host = {"PATH": "/bin", "ANTHROPIC_API_KEY": "sk-host", "CLAUDE_CODE_OAUTH_TOKEN": "oat"}
+        with (
+            patch.object(config, "jb_repo", lambda: jb),
+            patch.object(config, "JB_JUDGE_PYTHON", python),
+            patch.object(config, "JB_JUDGE_BACKEND", "claude_cli"),
+            patch.object(config, "JB_JUDGE_WORKERS", 2),
+            patch.object(config, "CLAUDE_AUTH", "oauth"),
+            patch.dict(config._CLAUDE_SECRETS, {}, clear=True),
+            patch.dict("os.environ", host, clear=True),
+            patch("harness2.benchmarks.jobbench.subprocess.run", run),
+        ):
+            adapter = JobBenchAdapter(substrate="cc", store_root=self.root)
+            self.assertTrue(adapter._run_judge("p/task1", "lbl", self.root))
+        ((cmd, env),) = calls  # the judge itself; no gcloud token call
+        self.assertEqual(cmd[cmd.index("--max-workers") + 1], "2")
+        self.assertEqual(env["JUDGE_BACKEND"], "claude_cli")
+        self.assertEqual(env["CLAUDE_CODE_OAUTH_TOKEN"], "oat")
+        self.assertEqual(env["JUDGE_CLAUDE_CONFIG_ISOLATED"], "1")
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+
     def render(self, substrate, events: list[dict]) -> str:
         stream = self.root / "stream.jsonl"
         lines = (json.dumps(e, ensure_ascii=False) for e in events)
