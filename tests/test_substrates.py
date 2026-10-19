@@ -15,6 +15,7 @@
 """The Claude Code and Pi substrates: surface, install layout, env isolation, renderers."""
 
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -22,10 +23,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from harness2 import config
 from harness2.benchmarks import jb_cli_runner, jb_opencode_runner
 from harness2.benchmarks.jobbench import JobBenchAdapter
 from harness2.benchmarks.lab import LabAdapter
 from harness2.core import prompts, tree
+from harness2.core.proposer import Proposer
+from harness2.core.spec import ChannelSpec
 from harness2.substrate import (
     CLAUDE_SURFACE,
     PI_SURFACE,
@@ -95,6 +99,8 @@ class SubstrateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PiSubstrate().materialise(self.root, SimpleNamespace(install_mode="codex_root"), {})
 
+    @patch.object(config, "VERTEX_PROJECT", "p")
+    @patch.object(config, "CLAUDE_AUTH", "vertex")
     def test_host_credentials_never_reach_a_run(self):
         host = {"PATH": "/bin", "ANTHROPIC_API_KEY": "sk-host", "CLAUDE_CODE_USE_BEDROCK": "1"}
         env = ClaudeSubstrate().exec_env(host, config_dir=self.root)
@@ -109,6 +115,76 @@ class SubstrateTests(unittest.TestCase):
             PiSubstrate().exec_env(host, config_dir=self.root)["PI_CODING_AGENT_DIR"],
             str(self.root),
         )
+
+    def test_claude_auth_passes_only_the_named_credential(self):
+        host = {
+            "PATH": "/bin",
+            "ANTHROPIC_API_KEY": "sk-host",
+            "CLAUDE_CODE_OAUTH_TOKEN": "oat-host",
+            "CLAUDE_CODE_USE_VERTEX": "1",
+        }
+        cases = {
+            "api_key": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
+            "oauth": ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"),
+        }
+        for mode, (kept, dropped) in cases.items():
+            with (
+                self.subTest(mode=mode),
+                patch.object(config, "CLAUDE_AUTH", mode),
+                patch.dict(config._CLAUDE_SECRETS, {}, clear=True),
+                patch.dict("os.environ", {kept: "secret"}),
+            ):
+                env = ClaudeSubstrate().exec_env(host, config_dir=self.root)
+                self.assertEqual(env[kept], "secret")  # from the harness env, not the host map
+                self.assertNotIn(dropped, env)
+                self.assertNotIn("CLAUDE_CODE_USE_VERTEX", env)
+                prop = Proposer(ChannelSpec("claude_cli", "claude-x")).env()
+                self.assertEqual(prop[kept], "secret")
+                self.assertNotIn("CLAUDE_CODE_USE_VERTEX", prop)
+                self.assertEqual(prop["ANTHROPIC_MODEL"], "claude-x")
+
+    def test_claude_auth_refuses_a_missing_credential_or_unknown_mode(self):
+        for mode in ("oauth", "api_key", "subscription"):
+            with (
+                self.subTest(mode=mode),
+                patch.object(config, "CLAUDE_AUTH", mode),
+                patch.dict(config._CLAUDE_SECRETS, {}, clear=True),
+                patch.dict("os.environ", {}, clear=True),
+                self.assertRaises(config.ConfigError),
+            ):
+                config.claude_auth_env()
+
+    def test_claude_only_needs_no_opencode_model(self):
+        token = {"HARNESS2_CLAUDE_MODEL": "claude-x", "CLAUDE_CODE_OAUTH_TOKEN": "secret"}
+        with (
+            patch.object(config, "DEFAULT_PROPOSER_CHANNEL", "claude_cli"),
+            patch.object(config, "CLAUDE_AUTH", "oauth"),
+            patch.dict(config._CLAUDE_SECRETS, {}, clear=True),
+            patch.dict(config.PROPOSER_MODEL_BY_CHANNEL, {"claude_cli": "claude-x"}),
+            patch.dict("os.environ", token, clear=True),
+        ):
+            config.validate_models(substrate="cc")  # no HARNESS2_SOLVER_MODEL
+            with self.assertRaises(config.ConfigError):
+                config.validate_models(substrate="oc")
+            with (
+                patch.dict(config.PROPOSER_MODEL_BY_CHANNEL, {"claude_cli": "anthropic/claude-x"}),
+                self.assertRaises(config.ConfigError),
+            ):
+                config.validate_models(substrate="cc")
+
+    def test_subscription_token_is_not_left_in_the_process_env(self):
+        with (
+            patch.object(config, "CLAUDE_AUTH", "oauth"),
+            patch.dict(config._CLAUDE_SECRETS, {"CLAUDE_CODE_OAUTH_TOKEN": "oat-from-dotenv"}),
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            self.assertEqual(
+                config.claude_auth_env(), {"CLAUDE_CODE_OAUTH_TOKEN": "oat-from-dotenv"}
+            )
+            self.assertNotIn(
+                "CLAUDE_CODE_OAUTH_TOKEN", PiSubstrate().exec_env({}, config_dir=self.root)
+            )
+        self.assertNotIn("CLAUDE_CODE_OAUTH_TOKEN", os.environ)
 
     def render(self, substrate, events: list[dict]) -> str:
         stream = self.root / "stream.jsonl"

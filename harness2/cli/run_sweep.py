@@ -216,7 +216,7 @@ def _check_identity(adapter, args, namespace_dir: Path) -> None:
             "cc": config.CLAUDE_MODEL,
             "pi": config.PI_MODEL,
         }[args.substrate],
-        "improver": config.IMPROVER_MODEL,
+        "improver": config.PROPOSER_MODEL_BY_CHANNEL[config.DEFAULT_PROPOSER_CHANNEL],
         "judge": config.JUDGE_MODEL,
         "project": config.VERTEX_PROJECT,
         "location": config.VERTEX_REGION,
@@ -228,6 +228,9 @@ def _check_identity(adapter, args, namespace_dir: Path) -> None:
         "domains": sorted(_csv(args.only_domains)),
         "seed": args.seed,
     }
+    # Only non-default routes are recorded, so existing run directories keep their identity.
+    if config.DEFAULT_PROPOSER_CHANNEL != "opencode":
+        identity["improver_channel"] = config.DEFAULT_PROPOSER_CHANNEL
     namespace_dir.mkdir(parents=True, exist_ok=True)
     path = namespace_dir / "config.json"
     if path.is_file():

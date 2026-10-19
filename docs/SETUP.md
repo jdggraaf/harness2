@@ -143,8 +143,9 @@ Codex runs with its sandbox disabled. Review the
 
 ## Claude Code and Pi executors
 
-Both run on JobBench only, on Vertex AI with the same Application Default
-Credentials and `GOOGLE_CLOUD_PROJECT`. Setup installs the pinned npm package
+Both run on JobBench only. Pi runs on Vertex AI with the same Application Default
+Credentials and `GOOGLE_CLOUD_PROJECT`; Claude Code does too unless
+`HARNESS2_CLAUDE_AUTH` selects another route. Setup installs the pinned npm package
 under `dependencies/` (`config.CLAUDE_VERSION`, `config.PI_VERSION`):
 
 ```bash
@@ -155,8 +156,18 @@ harness2 --bench jb --substrate cc --k 1 --mode parallel --max-tasks 1
 
 | Setting | Executor | Purpose |
 |---|---|---|
-| `HARNESS2_CLAUDE_MODEL` | Claude Code | A Claude model ID available on Vertex AI; required |
+| `HARNESS2_CLAUDE_MODEL` | Claude Code | A Claude model ID for the chosen route, for example a Vertex AI ID or an Anthropic API alias; required |
+| `HARNESS2_CLAUDE_AUTH` | Claude Code | `vertex` (default), `api_key` or `oauth`; also used by the `claude_cli` proposer |
+| `HARNESS2_PROPOSER_CHANNEL` | Improver | `opencode` (default) or `claude_cli`; `claude_cli` takes a bare Anthropic ID in `HARNESS2_IMPROVER_MODEL`, defaulting to `HARNESS2_CLAUDE_MODEL` |
 | `HARNESS2_PI_MODEL` | Pi | Pi `provider/model` ID, for example `google-vertex/<model>`; defaults to `HARNESS2_SOLVER_MODEL` |
+
+With `HARNESS2_CLAUDE_AUTH=api_key`, set `ANTHROPIC_API_KEY`. With
+`HARNESS2_CLAUDE_AUTH=oauth`, set `CLAUDE_CODE_OAUTH_TOKEN` to the token printed by
+`claude setup-token`, which uses a Claude subscription; usage then counts against
+that subscription's limits. Only the credential the mode names is passed to a run.
+With `--substrate cc` and `HARNESS2_PROPOSER_CHANNEL=claude_cli`, no OpenCode model
+is used, so `HARNESS2_SOLVER_MODEL` is not required. Judging still uses the
+configured judge endpoint.
 
 Claude Code runs with permission checks bypassed, which it refuses as root: run
 it as a regular user. It is proprietary software installed from npm under

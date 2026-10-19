@@ -172,14 +172,16 @@ class ClaudeSubstrate:
         ]
 
     def exec_env(self, base_env: Mapping[str, str], *, config_dir: Path) -> dict[str, str]:
-        """Vertex AI routing in a throwaway config dir; the host's Claude settings never leak."""
+        """config.CLAUDE_AUTH routing in a throwaway config dir; host Claude settings never leak.
+
+        Only the one credential HARNESS2_CLAUDE_AUTH names is passed on; every other
+        ANTHROPIC_* / CLAUDE_CODE_* variable of the host is dropped.
+        """
         env = {k: v for k, v in base_env.items() if not k.startswith(_HOST_ENV_PREFIXES)}
+        env.update(config.claude_auth_env())
         env.update(
             {
                 "CLAUDE_CONFIG_DIR": str(config_dir),
-                "CLAUDE_CODE_USE_VERTEX": "1",
-                "ANTHROPIC_VERTEX_PROJECT_ID": config.VERTEX_PROJECT,
-                "CLOUD_ML_REGION": config.VERTEX_REGION,
                 "DISABLE_UPDATES": "1",
                 "DISABLE_TELEMETRY": "1",
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
@@ -207,9 +209,9 @@ class ClaudeSubstrate:
         )
 
     def preflight(self) -> None:
-        """Check the CLI, the model and the Vertex project; starts nothing."""
+        """Check the CLI, the model and the credential HARNESS2_CLAUDE_AUTH needs; starts nothing."""
         config.require("HARNESS2_CLAUDE_MODEL", needed_by="the Claude Code executor")
-        config.require("GOOGLE_CLOUD_PROJECT", needed_by="Claude Code on Vertex AI")
+        config.claude_auth_env()
         if not config.CLAUDE_BIN.is_file():
             raise RuntimeError(
                 "Claude Code is not installed; run harness2-setup <bench> --substrate cc"
