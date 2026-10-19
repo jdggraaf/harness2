@@ -165,6 +165,7 @@ CODEX_HOME_DIR = DEPENDENCIES / "codex" / "home"
 CLAUDE_VERSION = "2.1.292"
 CLAUDE_BIN = DEPENDENCIES / "claude" / "node_modules" / ".bin" / "claude"
 CLAUDE_MODEL = env("HARNESS2_CLAUDE_MODEL", "")
+
 PI_VERSION = "1.3.0"
 PI_BIN = DEPENDENCIES / "pi" / "node_modules" / ".bin" / "pi"
 PI_MODEL = env("HARNESS2_PI_MODEL", SOLVER_MODEL_OC)  # same `provider/model` form as OpenCode
