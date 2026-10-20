@@ -216,7 +216,7 @@ class ClaudeSubstrate:
             raise RuntimeError(
                 "Claude Code is not installed; run harness2-setup <bench> --substrate cc"
             )
-        if os.geteuid() == 0:
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
             raise RuntimeError(
                 "Claude Code refuses bypassPermissions as root; run as a non-root user"
             )

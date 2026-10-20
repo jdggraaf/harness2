@@ -410,7 +410,12 @@ def run_detached(cmd: list[str], *, timeout: int, **kw) -> None:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True
+                )
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             proc.kill()
         proc.wait()

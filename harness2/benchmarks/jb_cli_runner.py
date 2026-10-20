@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -91,21 +92,30 @@ def _attempt(
         output_dir=workspace / "output",
         workspace=workspace,
     )
-    argv = ["timeout", "--kill-after=30s", cfg.timeout_per_task]
-    argv += cfg.substrate.exec_argv(prompt, workspace, cfg.model)
+    argv = cfg.substrate.exec_argv(prompt, workspace, cfg.model)
     with (
         tempfile.TemporaryDirectory(prefix=f".{task_name}_a{attempt}.home.") as home,
         traj_file.open("w", encoding="utf-8") as out,
         log_file.open("a", encoding="utf-8") as err,
     ):
-        return subprocess.run(
+        proc = subprocess.Popen(
             argv,
             cwd=workspace,
             env=cfg.substrate.exec_env(os.environ, config_dir=Path(home)),
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=err,
-        ).returncode
+            start_new_session=True,
+        )
+        try:
+            return proc.wait(timeout=int(cfg.timeout_per_task))
+        except subprocess.TimeoutExpired:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            return 124
 
 
 def main() -> int:

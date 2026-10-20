@@ -20,6 +20,8 @@ import argparse
 import shutil
 import subprocess
 
+import os
+
 from harness2 import config, install
 from harness2.cli._common import SUBSTRATES
 
@@ -68,10 +70,10 @@ def main(argv=None):
         install.patch(name, dry_run=dry)
         install.overlays(name, dry_run=dry)
         repo = config.DEPENDENCIES / name
-        install.run(["uv", "sync", "--locked", "--python", "3.12"], cwd=repo, dry_run=dry)
+        install.sync_env(repo, dry_run=dry)
         if args.benchmark == "jb":
             install.run(
-                ["uv", "pip", "install", "--python", repo / ".venv/bin/python", "python-docx"],
+                ["uv", "pip", "install", "--python", config.venv_python(repo), *(["--break-system-packages"] if os.name == "nt" else []), "python-docx"],
                 dry_run=dry,
             )
             install.download_jobbench(dry_run=dry)
@@ -82,7 +84,7 @@ def main(argv=None):
                     "pip",
                     "install",
                     "--python",
-                    repo / ".venv/bin/python",
+                    config.venv_python(repo),
                     "google-auth[requests]",
                 ],
                 dry_run=dry,

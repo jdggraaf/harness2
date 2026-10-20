@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 JOBBENCH = Path(__file__).resolve().parents[1]
-TEMP_BASE = Path("/tmp/hevo_ws")
+TEMP_BASE = Path(tempfile.gettempdir()) / "hevo_ws"
 TRAJ_DIR_NAME = "model_traj"
 EVENT_PREFIX = '{"type":'
 

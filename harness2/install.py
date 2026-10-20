@@ -20,6 +20,7 @@ import json
 import shlex
 import shutil
 import stat
+import os
 import subprocess
 import tempfile
 import tomllib
@@ -63,7 +64,7 @@ def run(cmd, *, cwd=None, dry_run=False):
     cmd = [str(c) for c in cmd]
     print((f"[{cwd}] " if cwd else "") + shlex.join(cmd), flush=True)
     if not dry_run:
-        subprocess.run(cmd, cwd=cwd, check=True)
+        subprocess.run([shutil.which(cmd[0]) or cmd[0], *cmd[1:]], cwd=cwd, check=True)
 
 
 def clone(name: str, *, dry_run=False):
@@ -317,7 +318,7 @@ open(sys.argv[1]+"/revision.json", "w").write(json.dumps({"revision": revision})
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="download-", dir=dest.parent) as tmp:
-        run([repo / ".venv" / "bin" / "python", "-c", code, tmp])
+        run([config.venv_python(repo), "-c", code, tmp])
         staged = Path(tmp) / "dataset"
         if not list(staged.glob("*/*/task_folder/TASK_INSTRUCTIONS.txt")):
             raise RuntimeError("JobBench download did not contain task instructions")
@@ -325,3 +326,33 @@ open(sys.argv[1]+"/revision.json", "w").write(json.dumps({"revision": revision})
             dest.rmdir()
         staged.rename(dest)
         shutil.copy2(Path(tmp) / "revision.json", dest / ".harness2-download.json")
+
+
+def sync_env(repo, *, dry_run=False):
+    """Create the checkout's locked environment; Windows blocks venv launchers, so copy a Python."""
+    if os.name != "nt":
+        run(["uv", "sync", "--locked", "--python", "3.12"], cwd=repo, dry_run=dry_run)
+        return
+    base = subprocess.run(
+        ["uv", "python", "find", "3.12"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    target = Path(repo) / ".venv" / "Scripts"
+    print(f"copy {Path(base).parent} -> {target}", flush=True)
+    if not dry_run:
+        shutil.rmtree(Path(repo) / ".venv", ignore_errors=True)
+        shutil.copytree(Path(base).parent, target)
+    py = config.venv_python(Path(repo))
+    reqs = Path(repo) / ".venv" / "requirements.txt"
+    run(
+        ["uv", "export", "--locked", "--no-hashes", "--no-emit-project", "-o", reqs],
+        cwd=repo,
+        dry_run=dry_run,
+    )
+    run(
+        ["uv", "pip", "install", "--python", py, "--break-system-packages", "-r", reqs],
+        dry_run=dry_run,
+    )
+    shim = Path(__file__).parent / "winshim" / "fcntl.py"
+    if not dry_run:
+        site = Path(repo) / ".venv" / "Scripts" / "Lib" / "site-packages"
+        shutil.copy(shim, site / "fcntl.py")

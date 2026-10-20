@@ -129,12 +129,18 @@ def lab_repo() -> Path:
 
 OPENCODE_DIR = DEPENDENCIES / "opencode"
 BUN = DEPENDENCIES / "tools" / "node_modules" / ".bin" / "bun"
-LAB_PYTHON = lab_repo() / ".venv" / "bin" / "python"
+def venv_python(repo):
+    """Interpreter of a benchmark checkout's .venv (a full interpreter copy on Windows)."""
+    sub = ("Scripts", "python.exe") if os.name == "nt" else ("bin", "python")
+    return repo / ".venv" / sub[0] / sub[1]
+
+
+LAB_PYTHON = venv_python(lab_repo())
 LAB_JUDGE_MODEL = (
     "vertex/" + JUDGE_MODEL if JUDGE_MODEL.startswith(("claude", "gemini")) else JUDGE_MODEL
 )
 LAB_DELIV_CAP = 60000
-JB_JUDGE_PYTHON = jb_repo() / ".venv" / "bin" / "python"
+JB_JUDGE_PYTHON = venv_python(jb_repo())
 JB_JUDGE_MODEL = (
     "google/" + JUDGE_MODEL
     if JUDGE_MODEL.startswith("gemini") and not env("HARNESS2_JUDGE_BASE_URL")
@@ -170,7 +176,11 @@ CODEX_HOME_DIR = DEPENDENCIES / "codex" / "home"
 # Pinned from the npm "latest" channel; releases:
 # https://www.npmjs.com/package/@anthropic-ai/claude-code?activeTab=versions
 CLAUDE_VERSION = "2.1.302"
-CLAUDE_BIN = DEPENDENCIES / "claude" / "node_modules" / ".bin" / "claude"
+CLAUDE_BIN = (
+    Path(env("HARNESS2_CLAUDE_BIN"))
+    if env("HARNESS2_CLAUDE_BIN")
+    else DEPENDENCIES / "claude" / "node_modules" / ".bin" / ("claude.cmd" if os.name == "nt" else "claude")
+)
 CLAUDE_MODEL = env("HARNESS2_CLAUDE_MODEL", "")
 # How Claude Code (the cc executor and the claude_cli proposer) authenticates:
 # vertex (default; Application Default Credentials and GOOGLE_CLOUD_PROJECT),

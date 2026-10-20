@@ -145,7 +145,7 @@ def check(adapter, *, judge=False) -> list[str]:
         probe(
             "WorkBuddy runtime",
             [
-                repo / ".venv/bin/python",
+                config.venv_python(repo),
                 "-c",
                 "import harbor; from workbuddy_bench.runner.harness_adapters import HARNESS_ADAPTERS; "
                 "assert all(k in HARNESS_ADAPTERS for k in ('opencode', 'oc-harness', 'codex-harness'))",
